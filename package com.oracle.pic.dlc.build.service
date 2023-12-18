@@ -1,0 +1,559 @@
+package com.oracle.pic.dlc.build.service;
+
+import com.oracle.pic.dlc.build.constants.BuildAgentConstant;
+import com.oracle.pic.dlc.build.exceptions.ContainerServiceException;
+import com.oracle.pic.dlc.build.model.BuildConfiguration;
+import com.oracle.pic.dlc.build.model.ExecResult;
+import com.oracle.pic.dlc.build.util.PathUtil;
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import org.apache.commons.exec.CommandLine;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
+public class ContainerServiceTest {
+
+    private static final String DOCKER = "docker";
+    private static final String TEST_CONTAINER = "testContainer";
+    private static final String TEST_VOLUME = "testVolume";
+    private static final String RANDOM_CONTAINER = "random";
+    private static final String DATA_DIR = "/data/";
+    private static final String INVALID_CONTAINER = "test?container";
+    private static final String IMAGE = "alpine:3";
+    private static final String PS = "ps";
+    private static final String START_DOCKER_DAEMON_SCRIPT = "/root/scripts/start-docker-daemon.sh";
+    private static final String SH = "sh";
+    private static final int ZERO_EXIT_VALUE = 0;
+    private static final int ONE_EXIT_VALUE = 1;
+
+    @Test
+    public void test_createContainerWithVolume_ValidCase()
+            throws InterruptedException, IOException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ZERO_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        containerService.createContainerWithVolume(TEST_CONTAINER, TEST_VOLUME, DATA_DIR, IMAGE);
+
+        ArgumentCaptor<CommandLine> commandLineArgumentCaptor =
+                ArgumentCaptor.forClass(CommandLine.class);
+        ArgumentCaptor<String> directoryArgumentCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Long> longArgumentCaptor = ArgumentCaptor.forClass(Long.class);
+        Mockito.verify(execService, Mockito.times(1))
+                .execute(
+                        commandLineArgumentCaptor.capture(),
+                        directoryArgumentCaptor.capture(),
+                        longArgumentCaptor.capture());
+        CommandLine commandLine = commandLineArgumentCaptor.getValue();
+        Assertions.assertEquals(DOCKER, commandLine.getExecutable());
+        Assertions.assertEquals(
+                "container create --name "
+                        + TEST_CONTAINER
+                        + " -v "
+                        + PathUtil.getPath(TEST_VOLUME, DATA_DIR)
+                        + " "
+                        + IMAGE,
+                String.join(" ", commandLine.getArguments()));
+    }
+
+    @Test
+    public void test_createContainerWithVolume_InValidCase()
+            throws InterruptedException, IOException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ONE_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                INVALID_CONTAINER, TEST_VOLUME, DATA_DIR, IMAGE));
+    }
+
+    @Test
+    public void test_createContainerWithVolume_NullParameters() {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Assertions.assertThrows(
+                NullPointerException.class,
+                () -> containerService.createContainerWithVolume(null, null, null, null));
+
+        Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                null, TEST_VOLUME, DATA_DIR, IMAGE));
+
+        Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                TEST_CONTAINER, null, DATA_DIR, IMAGE));
+
+        Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                TEST_CONTAINER, TEST_VOLUME, null, IMAGE));
+
+        Assertions.assertThrows(
+                NullPointerException.class,
+                () -> containerService.createContainerWithVolume(null, null, null, IMAGE));
+
+        Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                TEST_CONTAINER, TEST_VOLUME, DATA_DIR, null));
+    }
+
+    @Test
+    public void test_createContainerWithVolume_CommandIOException()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doThrow(IOException.class)
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                IOException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                TEST_CONTAINER, TEST_VOLUME, DATA_DIR, IMAGE));
+    }
+
+    @Test
+    public void test_createContainerWithVolume_CommandInterruptedException()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doThrow(InterruptedException.class)
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                InterruptedException.class,
+                () ->
+                        containerService.createContainerWithVolume(
+                                TEST_CONTAINER, TEST_VOLUME, DATA_DIR, IMAGE));
+    }
+
+    @Test
+    public void test_removeContainer_ValidCase() throws InterruptedException, IOException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ZERO_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertEquals(true, containerService.removeContainer(TEST_CONTAINER));
+
+        ArgumentCaptor<CommandLine> commandLineArgumentCaptor =
+                ArgumentCaptor.forClass(CommandLine.class);
+        ArgumentCaptor<String> directoryArgumentCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Long> longArgumentCaptor = ArgumentCaptor.forClass(Long.class);
+        Mockito.verify(execService, Mockito.times(1))
+                .execute(
+                        commandLineArgumentCaptor.capture(),
+                        directoryArgumentCaptor.capture(),
+                        longArgumentCaptor.capture());
+        CommandLine commandLine = commandLineArgumentCaptor.getValue();
+        Assertions.assertEquals(DOCKER, commandLine.getExecutable());
+        Assertions.assertEquals(
+                "rm " + TEST_CONTAINER, String.join(" ", commandLine.getArguments()));
+    }
+
+    @Test
+    public void test_removeContainer_NullParameters() {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Assertions.assertThrows(
+                NullPointerException.class, () -> containerService.removeContainer(null));
+    }
+
+    @Test
+    public void test_removeContainer_InvalidContainer() throws InterruptedException, IOException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ONE_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class,
+                () -> containerService.removeContainer(RANDOM_CONTAINER));
+    }
+
+    @Test
+    public void test_removeContainer_CommandIOException() throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doThrow(IOException.class)
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                IOException.class, () -> containerService.removeContainer(TEST_CONTAINER));
+    }
+
+    @Test
+    public void test_removeContainer_CommandInterruptedException()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doThrow(InterruptedException.class)
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                InterruptedException.class, () -> containerService.removeContainer(TEST_CONTAINER));
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_StartSuccessfully()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ZERO_EXIT_VALUE, false),
+                        getExecResult(ZERO_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        containerService.startDockerDaemonProcess();
+        ArgumentCaptor<CommandLine> commandLineArgumentCaptor =
+                ArgumentCaptor.forClass(CommandLine.class);
+        ArgumentCaptor<String> directoryArgumentCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Long> longArgumentCaptor = ArgumentCaptor.forClass(Long.class);
+        Mockito.verify(execService, Mockito.times(3))
+                .execute(
+                        commandLineArgumentCaptor.capture(),
+                        directoryArgumentCaptor.capture(),
+                        longArgumentCaptor.capture());
+
+        List<CommandLine> commandLineList = commandLineArgumentCaptor.getAllValues();
+        assertCommandLineArguments(
+                DOCKER,
+                PS,
+                commandLineList.get(0).getExecutable(),
+                commandLineList.get(0).getArguments());
+        assertCommandLineArguments(
+                SH,
+                START_DOCKER_DAEMON_SCRIPT,
+                commandLineList.get(1).getExecutable(),
+                commandLineList.get(1).getArguments());
+        assertCommandLineArguments(
+                DOCKER,
+                PS,
+                commandLineList.get(2).getExecutable(),
+                commandLineList.get(2).getArguments());
+
+        String expectedDir =
+                new File(PathUtil.appendInternalPath(BuildAgentConstant.AGENT_DIR))
+                        .getAbsolutePath();
+        Assertions.assertEquals(
+                Arrays.asList(expectedDir, expectedDir, expectedDir),
+                directoryArgumentCaptor.getAllValues());
+        Assertions.assertEquals(
+                Arrays.asList(
+                        BuildAgentConstant.MINUTE_TIMEOUT_IN_MILLISECOND,
+                        BuildAgentConstant.MINUTE_TIMEOUT_IN_MILLISECOND,
+                        BuildAgentConstant.MINUTE_TIMEOUT_IN_MILLISECOND),
+                longArgumentCaptor.getAllValues());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_DaemonAlreadyRunning()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ZERO_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        containerService.startDockerDaemonProcess();
+
+        ArgumentCaptor<CommandLine> commandLineArgumentCaptor =
+                ArgumentCaptor.forClass(CommandLine.class);
+        ArgumentCaptor<String> directoryArgumentCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Long> longArgumentCaptor = ArgumentCaptor.forClass(Long.class);
+        Mockito.verify(execService, Mockito.times(1))
+                .execute(
+                        commandLineArgumentCaptor.capture(),
+                        directoryArgumentCaptor.capture(),
+                        longArgumentCaptor.capture());
+
+        assertCommandLineArguments(
+                DOCKER,
+                PS,
+                commandLineArgumentCaptor.getValue().getExecutable(),
+                commandLineArgumentCaptor.getValue().getArguments());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_StartDockerDaemonFailed()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ONE_EXIT_VALUE, false), getExecResult(ONE_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_StartDockerTimedOut()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(ONE_EXIT_VALUE, false), getExecResult(ZERO_EXIT_VALUE, true))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_DockerDaemonNeverStartedAfterWait()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ZERO_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false),
+                        getExecResult(ONE_EXIT_VALUE, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_CheckDockerDaemonFailed()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(127, false))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_CheckDockerDaemonTimeOut()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doReturn(getExecResult(0, true))
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                ContainerServiceException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_CheckStatusIOExceptionThrown()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doThrow(IOException.class)
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                IOException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_CheckStatusInterruptedExceptionThrown()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.doThrow(InterruptedException.class)
+                .when(execService)
+                .execute(
+                        ArgumentMatchers.any(CommandLine.class),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        Assertions.assertThrows(
+                InterruptedException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_StartDockerIOException()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.when(
+                        execService.execute(
+                                ArgumentMatchers.any(CommandLine.class),
+                                ArgumentMatchers.anyString(),
+                                ArgumentMatchers.anyLong()))
+                .thenReturn(getExecResult(1, false))
+                .thenThrow(IOException.class);
+        Assertions.assertThrows(
+                IOException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    @Test
+    public void test_StartDockerDaemonProcess_StartDockerInterruptedException()
+            throws IOException, InterruptedException {
+        ExecService execService = Mockito.mock(ExecService.class);
+        ContainerService containerService =
+                new ContainerService(execService, getBuildConfiguration());
+        Mockito.when(
+                        execService.execute(
+                                ArgumentMatchers.any(CommandLine.class),
+                                ArgumentMatchers.anyString(),
+                                ArgumentMatchers.anyLong()))
+                .thenReturn(getExecResult(1, false))
+                .thenThrow(InterruptedException.class);
+        Assertions.assertThrows(
+                InterruptedException.class, () -> containerService.startDockerDaemonProcess());
+    }
+
+    private void assertCommandLineArguments(
+            String expectedExecutable,
+            String expectedArguments,
+            String actualExecutable,
+            String[] actualArguments) {
+        Assertions.assertEquals(expectedExecutable, actualExecutable);
+        Assertions.assertEquals(expectedArguments, String.join(" ", actualArguments));
+    }
+
+    private BuildConfiguration getBuildConfiguration() {
+        return BuildConfiguration.builder()
+                .agentDirPath(new File(BuildAgentConstant.AGENT_DIR).getAbsolutePath())
+                .build();
+    }
+
+    private ExecResult getExecResult(int exitValue, boolean timeout) {
+        return ExecResult.builder().exitValue(exitValue).timeout(timeout).build();
+    }
+}
+
+
+
+FROM dlc-bld-release-docker-local.artifactory.oci.oraclecorp.com/custom-docker:20.10.3-dind
+COPY ./target/build-agent-*.jar /app/agent.jar
+RUN mkdir -p /app/classpath
+COPY ./target/classpath /app/classpath
+COPY ./dev-config  /root/.oci
+COPY ./scripts     /root/scripts
+ENTRYPOINT ["java", "-jar", "/app/agent.jar"]
+
+            this.containerService = newContainerService(execService, buildConfiguration);
+            containerService.startDockerDaemonProcess();
+
+                @VisibleForTesting
+    ContainerService newContainerService(
+            @NonNull final ExecService execService,
+            @NonNull final BuildConfiguration buildConfiguration) {
+        return new ContainerService(execService, buildConfiguration);
+    }
+
+
+        @Test
+    public void test_Call_ValidFile() throws Exception {
+        ObjectStorageService objectStorageService = Mockito.mock(ObjectStorageService.class);
+        DownloadSourceService downloadSourceService = Mockito.mock(DownloadSourceService.class);
+        ContainerService containerService = Mockito.mock(ContainerService.class);
+        BuildConfiguration buildConfiguration = getBuildConfiguration(true, VALID_OCI_CONFIG_PATH);
+        BuildCommand command = new BuildCommand();
+        command = Mockito.spy(command);
+        Mockito.doReturn(buildConfiguration).when(command).initializeStartupFile();
+        Mockito.doReturn(objectStorageService).when(command).newObjectStorageService(Mockito.any());
+        Mockito.doReturn(containerService)
+                .when(command)
+                .newContainerService(Mockito.any(), Mockito.any());
+        Mockito.doReturn(downloadSourceService)
+                .when(command)
+                .initializeDownloadSource(Mockito.any(), Mockito.any(), Mockito.any());
+        command.call();
+
+        Mockito.verify(command, Mockito.times(1)).initializeStartupFile();
+        Mockito.verify(command, Mockito.times(1)).newObjectStorageService(Mockito.any());
+        Mockito.verify(command, Mockito.times(1))
+                .initializeDownloadSource(Mockito.any(), Mockito.any(), Mockito.any());
+        Mockito.verify(downloadSourceService, Mockito.times(1)).downloadSource();
+    }
+

@@ -196,4 +196,3 @@ mid 1970s, computing is less expensive and humans more expensive:
     - attributes with - private
     - attributes with # protected
 - class diagram and its relationships.
-

@@ -17,9 +17,17 @@
 ### Guice
 - injection framework developed by google. 
 
+- to
+- toInstance
+- @Provides
 ### Spring Dependency injection
 
 ### Dagger 2
 - developed by google
 - fully static and compile time.
 - fast and reflection free.
+
+
+## Why private final instance variables
+- avoids state leak since there is no state update, we dont change values.
+- avoids null pointer exception among multiple threads. because once value is set it is available to all the threads.

@@ -46,5 +46,7 @@ ZGC
 
 We need to have more memory than xmx in the container.
 
+eclipse mat analyzer was an amazing tool to analyse heap dump
+
 
 

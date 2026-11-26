@@ -305,7 +305,9 @@ Host:
 
 Docker uses network namespaces for each container. Then it uses virtual ethernet pair to connect containers together.
 
-
+# docker hub alternatives within oracle
+https://container-registry.oracle.com/ords/f?p=113:10
+https://ocr-docker-remote.artifactory.oci.oraclecorp.com/ocr-docker-remote/
 
 
 
